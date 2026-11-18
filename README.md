@@ -40,7 +40,7 @@ Version 0.1 is an early release.
 | Platform | Built-in rules | State |
 | --- | --- | --- |
 | Ubuntu | 34 | Exercised on Ubuntu 26.04 and covered by fixture-based tests. |
-| Windows 11 | 22 | Builds and lints for `x86_64-pc-windows`. Rules are registry reads and have not yet been validated on a real Windows 11 machine. |
+| Windows 11 | 22 | Builds and lints for `x86_64-pc-windows`. Run once on a real Windows 11 machine: all 22 checks returned a verdict. Some built-in defaults are still under review; see [docs/windows-validation.md](docs/windows-validation.md). |
 
 The built-in baseline is inspired by widely used hardening guidance (CIS Benchmarks, Microsoft security baselines, kernel documentation). It is **not** a certified benchmark assessment.
 
@@ -104,7 +104,7 @@ rules:
 
 ## Roadmap
 
-- Validation of the Windows 11 baseline on real hardware, then signed release binaries.
+- Wider Windows 11 validation (more builds and editions, version-aware defaults), then signed release binaries.
 - SARIF and HTML reports.
 - More check types: listening sockets, service state, Windows audit policy.
 - Per-rule waivers with a required justification.

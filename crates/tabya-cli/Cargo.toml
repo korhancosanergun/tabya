@@ -1,0 +1,24 @@
+[package]
+name = "tabya"
+description = "Read-only host hardening auditor for Ubuntu and Windows 11"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+keywords.workspace = true
+categories.workspace = true
+
+[[bin]]
+name = "tabya"
+path = "src/main.rs"
+
+[dependencies]
+tabya-core.workspace = true
+clap.workspace = true
+anstream.workspace = true
+anstyle.workspace = true
+
+[lints]
+workspace = true

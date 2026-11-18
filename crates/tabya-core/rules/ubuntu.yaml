@@ -1,0 +1,346 @@
+# tabya built-in baseline for Ubuntu.
+#
+# Inspired by widely used hardening guidance (CIS Benchmarks, vendor
+# baselines, kernel documentation). This is not a certified benchmark
+# assessment. Every check is read-only.
+
+rules:
+  # ── Kernel ────────────────────────────────────────────────────────────
+  - id: UBU-KRN-001
+    title: Address space layout randomization is fully enabled
+    severity: high
+    platform: linux
+    rationale: ASLR makes memory corruption bugs much harder to exploit reliably.
+    remediation: Set kernel.randomize_va_space = 2 in /etc/sysctl.d/ and run `sysctl --system`.
+    references: ["https://www.kernel.org/doc/html/latest/admin-guide/sysctl/kernel.html"]
+    check: { type: sysctl, key: kernel.randomize_va_space, expect: { equals: 2 } }
+
+  - id: UBU-KRN-002
+    title: Kernel pointers are hidden from unprivileged users
+    severity: medium
+    platform: linux
+    rationale: Exposed kernel addresses help local attackers defeat kernel ASLR.
+    remediation: Set kernel.kptr_restrict = 1 (or 2) in /etc/sysctl.d/.
+    references: ["https://www.kernel.org/doc/html/latest/admin-guide/sysctl/kernel.html"]
+    check: { type: sysctl, key: kernel.kptr_restrict, expect: { at_least: 1 } }
+
+  - id: UBU-KRN-003
+    title: Kernel log is restricted to privileged users
+    severity: low
+    platform: linux
+    rationale: dmesg output can leak addresses and hardware details useful for local exploits.
+    remediation: Set kernel.dmesg_restrict = 1 in /etc/sysctl.d/.
+    references: ["https://www.kernel.org/doc/html/latest/admin-guide/sysctl/kernel.html"]
+    check: { type: sysctl, key: kernel.dmesg_restrict, expect: { equals: 1 } }
+
+  - id: UBU-KRN-004
+    title: ptrace is limited to child processes or stricter
+    severity: medium
+    platform: linux
+    rationale: Unrestricted ptrace lets a compromised process read secrets from other processes of the same user.
+    remediation: Set kernel.yama.ptrace_scope = 1 (or higher) in /etc/sysctl.d/.
+    references: ["https://www.kernel.org/doc/html/latest/admin-guide/LSM/Yama.html"]
+    check: { type: sysctl, key: kernel.yama.ptrace_scope, expect: { at_least: 1 } }
+
+  - id: UBU-KRN-005
+    title: Unprivileged eBPF is disabled
+    severity: medium
+    platform: linux
+    rationale: The eBPF verifier has a long history of local privilege escalation bugs.
+    remediation: Set kernel.unprivileged_bpf_disabled = 1 (or 2) in /etc/sysctl.d/.
+    references: ["https://www.kernel.org/doc/html/latest/admin-guide/sysctl/kernel.html"]
+    check: { type: sysctl, key: kernel.unprivileged_bpf_disabled, expect: { at_least: 1 } }
+
+  - id: UBU-KRN-006
+    title: Performance events are restricted for unprivileged users
+    severity: low
+    platform: linux
+    rationale: perf_event_open exposes a large kernel attack surface and side channels.
+    remediation: Set kernel.perf_event_paranoid = 2 or higher in /etc/sysctl.d/.
+    references: ["https://www.kernel.org/doc/html/latest/admin-guide/sysctl/kernel.html"]
+    check: { type: sysctl, key: kernel.perf_event_paranoid, expect: { at_least: 2 } }
+
+  # ── Filesystem protections ────────────────────────────────────────────
+  - id: UBU-FS-001
+    title: Hardlink creation is protected
+    severity: medium
+    platform: linux
+    rationale: Blocks a classic class of time-of-check/time-of-use attacks against privileged programs.
+    remediation: Set fs.protected_hardlinks = 1 in /etc/sysctl.d/.
+    references: ["https://www.kernel.org/doc/html/latest/admin-guide/sysctl/fs.html"]
+    check: { type: sysctl, key: fs.protected_hardlinks, expect: { equals: 1 } }
+
+  - id: UBU-FS-002
+    title: Symlink following in sticky directories is protected
+    severity: medium
+    platform: linux
+    rationale: Stops symlink races in world-writable directories such as /tmp.
+    remediation: Set fs.protected_symlinks = 1 in /etc/sysctl.d/.
+    references: ["https://www.kernel.org/doc/html/latest/admin-guide/sysctl/fs.html"]
+    check: { type: sysctl, key: fs.protected_symlinks, expect: { equals: 1 } }
+
+  - id: UBU-FS-003
+    title: Setuid programs do not write core dumps
+    severity: medium
+    platform: linux
+    rationale: Core dumps of privileged processes can expose credentials and key material.
+    remediation: Set fs.suid_dumpable = 0 in /etc/sysctl.d/.
+    references: ["https://www.kernel.org/doc/html/latest/admin-guide/sysctl/fs.html"]
+    check: { type: sysctl, key: fs.suid_dumpable, expect: { equals: 0 } }
+
+  # ── Network stack ─────────────────────────────────────────────────────
+  - id: UBU-NET-001
+    title: IPv4 forwarding is disabled
+    severity: medium
+    platform: linux
+    rationale: A host that is not a router should not forward packets between networks. Container and VPN hosts legitimately enable this.
+    remediation: Set net.ipv4.ip_forward = 0 in /etc/sysctl.d/ unless the host routes traffic on purpose.
+    references: ["https://www.kernel.org/doc/html/latest/networking/ip-sysctl.html"]
+    check: { type: sysctl, key: net.ipv4.ip_forward, expect: { equals: 0 } }
+
+  - id: UBU-NET-002
+    title: ICMP redirects are not accepted
+    severity: medium
+    platform: linux
+    rationale: Forged ICMP redirects can reroute traffic through an attacker.
+    remediation: Set net.ipv4.conf.all.accept_redirects = 0 in /etc/sysctl.d/.
+    references: ["https://www.kernel.org/doc/html/latest/networking/ip-sysctl.html"]
+    check: { type: sysctl, key: net.ipv4.conf.all.accept_redirects, expect: { equals: 0 } }
+
+  - id: UBU-NET-003
+    title: ICMP redirects are not sent
+    severity: low
+    platform: linux
+    rationale: Only routers need to send redirects.
+    remediation: Set net.ipv4.conf.all.send_redirects = 0 in /etc/sysctl.d/.
+    references: ["https://www.kernel.org/doc/html/latest/networking/ip-sysctl.html"]
+    check: { type: sysctl, key: net.ipv4.conf.all.send_redirects, expect: { equals: 0 } }
+
+  - id: UBU-NET-004
+    title: Source-routed packets are rejected
+    severity: medium
+    platform: linux
+    rationale: Source routing lets the sender dictate the path and bypass network controls.
+    remediation: Set net.ipv4.conf.all.accept_source_route = 0 in /etc/sysctl.d/.
+    references: ["https://www.kernel.org/doc/html/latest/networking/ip-sysctl.html"]
+    check: { type: sysctl, key: net.ipv4.conf.all.accept_source_route, expect: { equals: 0 } }
+
+  - id: UBU-NET-005
+    title: Reverse path filtering is enabled
+    severity: medium
+    platform: linux
+    rationale: Drops packets with spoofed source addresses.
+    remediation: Set net.ipv4.conf.all.rp_filter = 1 (strict) or 2 (loose) in /etc/sysctl.d/.
+    references: ["https://www.kernel.org/doc/html/latest/networking/ip-sysctl.html"]
+    check: { type: sysctl, key: net.ipv4.conf.all.rp_filter, expect: { one_of: [1, 2] } }
+
+  - id: UBU-NET-006
+    title: TCP SYN cookies are enabled
+    severity: medium
+    platform: linux
+    rationale: Keeps the host reachable during SYN flood attacks.
+    remediation: Set net.ipv4.tcp_syncookies = 1 in /etc/sysctl.d/.
+    references: ["https://www.kernel.org/doc/html/latest/networking/ip-sysctl.html"]
+    check: { type: sysctl, key: net.ipv4.tcp_syncookies, expect: { equals: 1 } }
+
+  - id: UBU-NET-007
+    title: Broadcast ICMP echo requests are ignored
+    severity: low
+    platform: linux
+    rationale: Prevents the host from being used as a smurf amplifier.
+    remediation: Set net.ipv4.icmp_echo_ignore_broadcasts = 1 in /etc/sysctl.d/.
+    references: ["https://www.kernel.org/doc/html/latest/networking/ip-sysctl.html"]
+    check: { type: sysctl, key: net.ipv4.icmp_echo_ignore_broadcasts, expect: { equals: 1 } }
+
+  - id: UBU-NET-008
+    title: Packets with impossible addresses are logged
+    severity: low
+    platform: linux
+    rationale: Martian packet logs are an early sign of spoofing or misrouting.
+    remediation: Set net.ipv4.conf.all.log_martians = 1 in /etc/sysctl.d/.
+    references: ["https://www.kernel.org/doc/html/latest/networking/ip-sysctl.html"]
+    check: { type: sysctl, key: net.ipv4.conf.all.log_martians, expect: { equals: 1 } }
+
+  - id: UBU-NET-009
+    title: IPv6 ICMP redirects are not accepted
+    severity: medium
+    platform: linux
+    rationale: Forged ICMPv6 redirects can reroute traffic through an attacker.
+    remediation: Set net.ipv6.conf.all.accept_redirects = 0 in /etc/sysctl.d/.
+    references: ["https://www.kernel.org/doc/html/latest/networking/ip-sysctl.html"]
+    check: { type: sysctl, key: net.ipv6.conf.all.accept_redirects, expect: { equals: 0 } }
+
+  # ── OpenSSH server ────────────────────────────────────────────────────
+  - id: UBU-SSH-001
+    title: SSH root login with a password is disabled
+    severity: high
+    platform: linux
+    rationale: Root is the one account name every attacker knows; password logins for it invite brute force.
+    remediation: Set `PermitRootLogin no` (or prohibit-password) in /etc/ssh/sshd_config.d/ and reload ssh.
+    check:
+      type: sshd_config
+      key: PermitRootLogin
+      default: prohibit-password
+      expect: { one_of: ["no", prohibit-password, forced-commands-only] }
+
+  - id: UBU-SSH-002
+    title: SSH password authentication is disabled
+    severity: high
+    platform: linux
+    rationale: Key-only authentication removes password guessing and credential stuffing as an entry point.
+    remediation: Set `PasswordAuthentication no` in /etc/ssh/sshd_config.d/ after confirming key login works, then reload ssh.
+    check:
+      type: sshd_config
+      key: PasswordAuthentication
+      default: "yes"
+      expect: { equals: "no" }
+
+  - id: UBU-SSH-003
+    title: SSH logins with empty passwords are refused
+    severity: critical
+    platform: linux
+    rationale: An account with an empty password would be reachable by anyone on the network.
+    remediation: Set `PermitEmptyPasswords no` in /etc/ssh/sshd_config.d/ and reload ssh.
+    check:
+      type: sshd_config
+      key: PermitEmptyPasswords
+      default: "no"
+      expect: { equals: "no" }
+
+  - id: UBU-SSH-004
+    title: SSH X11 forwarding is disabled
+    severity: low
+    platform: linux
+    rationale: X11 forwarding exposes the client display to a compromised server and is rarely needed on servers.
+    remediation: Set `X11Forwarding no` in /etc/ssh/sshd_config.d/ and reload ssh.
+    check:
+      type: sshd_config
+      key: X11Forwarding
+      default: "no"
+      expect: { equals: "no" }
+
+  - id: UBU-SSH-005
+    title: SSH limits authentication attempts per connection
+    severity: medium
+    platform: linux
+    rationale: A low limit slows down guessing and makes failed attempts show up in logs sooner.
+    remediation: Set `MaxAuthTries 4` (or lower) in /etc/ssh/sshd_config.d/ and reload ssh.
+    check:
+      type: sshd_config
+      key: MaxAuthTries
+      default: 6
+      expect: { at_most: 4 }
+
+  # ── File permissions ──────────────────────────────────────────────────
+  - id: UBU-PERM-001
+    title: /etc/shadow is not readable by other users
+    severity: critical
+    platform: linux
+    rationale: Password hashes must only be readable by root and the shadow group.
+    remediation: Run `chown root:shadow /etc/shadow && chmod 640 /etc/shadow`.
+    check: { type: file_mode, path: /etc/shadow, max_mode: "0640", owner_uid: 0 }
+
+  - id: UBU-PERM-002
+    title: /etc/gshadow is not readable by other users
+    severity: high
+    platform: linux
+    rationale: Group password hashes must only be readable by root and the shadow group.
+    remediation: Run `chown root:shadow /etc/gshadow && chmod 640 /etc/gshadow`.
+    check: { type: file_mode, path: /etc/gshadow, max_mode: "0640", owner_uid: 0 }
+
+  - id: UBU-PERM-003
+    title: /etc/passwd is only writable by root
+    severity: critical
+    platform: linux
+    rationale: Anyone who can edit the account database can create a root-equivalent account.
+    remediation: Run `chown root:root /etc/passwd && chmod 644 /etc/passwd`.
+    check: { type: file_mode, path: /etc/passwd, max_mode: "0644", owner_uid: 0 }
+
+  - id: UBU-PERM-004
+    title: /etc/group is only writable by root
+    severity: high
+    platform: linux
+    rationale: Anyone who can edit group membership can add themselves to sudo.
+    remediation: Run `chown root:root /etc/group && chmod 644 /etc/group`.
+    check: { type: file_mode, path: /etc/group, max_mode: "0644", owner_uid: 0 }
+
+  - id: UBU-PERM-005
+    title: sshd_config is only accessible by root
+    severity: medium
+    platform: linux
+    rationale: The server configuration should not be writable, and need not be readable, by other users.
+    remediation: Run `chown root:root /etc/ssh/sshd_config && chmod 600 /etc/ssh/sshd_config`.
+    check: { type: file_mode, path: /etc/ssh/sshd_config, max_mode: "0600", owner_uid: 0 }
+
+  - id: UBU-PERM-006
+    title: /etc/crontab is only accessible by root
+    severity: medium
+    platform: linux
+    rationale: System cron jobs run as root; other users should neither change nor study them.
+    remediation: Run `chown root:root /etc/crontab && chmod 600 /etc/crontab`.
+    check: { type: file_mode, path: /etc/crontab, max_mode: "0600", owner_uid: 0 }
+
+  # ── Accounts ──────────────────────────────────────────────────────────
+  - id: UBU-ACC-001
+    title: No account has an empty password
+    severity: critical
+    platform: linux
+    rationale: An empty password field in /etc/shadow lets anyone log in to that account without a password.
+    remediation: Lock the reported account with `passwd -l <user>` or set a password.
+    check:
+      type: file_match
+      path: /etc/shadow
+      pattern: '^([^:]+)::'
+      default: none
+      expect: { equals: none }
+
+  - id: UBU-ACC-002
+    title: Passwords expire within a year
+    severity: low
+    platform: linux
+    rationale: A maximum age bounds how long a leaked password stays useful. Applies to newly created accounts.
+    remediation: Set `PASS_MAX_DAYS 365` (or lower) in /etc/login.defs.
+    check:
+      type: file_match
+      path: /etc/login.defs
+      pattern: '^\s*PASS_MAX_DAYS\s+(\d+)'
+      default: 99999
+      expect: { at_least: 1, at_most: 365 }
+
+  - id: UBU-ACC-003
+    title: Default umask keeps new files private from other users
+    severity: low
+    platform: linux
+    rationale: A umask of 027 or stricter stops new files from being world-readable by default.
+    remediation: Set `UMASK 027` in /etc/login.defs.
+    check:
+      type: file_match
+      path: /etc/login.defs
+      pattern: '^\s*UMASK\s+(\d+)'
+      default: "022"
+      expect: { one_of: ["027", "077"] }
+
+  # ── Updates and firewall ──────────────────────────────────────────────
+  - id: UBU-UPD-001
+    title: Automatic security updates are enabled
+    severity: high
+    platform: linux
+    rationale: Most compromises of internet-facing hosts use vulnerabilities that already have a patch.
+    remediation: Install unattended-upgrades and run `dpkg-reconfigure -plow unattended-upgrades`.
+    check:
+      type: file_match
+      path: /etc/apt/apt.conf.d/20auto-upgrades
+      pattern: '^\s*APT::Periodic::Unattended-Upgrade\s+"(\d+)"'
+      expect: { at_least: 1 }
+
+  - id: UBU-FW-001
+    title: The ufw host firewall is enabled
+    severity: medium
+    platform: linux
+    rationale: A default-deny host firewall limits exposure of services that were never meant to be public. Hosts that manage nftables or iptables directly can ignore this check.
+    remediation: Allow the ports you need (for example `ufw allow OpenSSH`), then run `ufw enable`.
+    check:
+      type: file_match
+      path: /etc/ufw/ufw.conf
+      pattern: '^\s*ENABLED\s*=\s*(\w+)'
+      expect: { equals: "yes" }

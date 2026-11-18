@@ -1,0 +1,313 @@
+# tabya built-in baseline for Windows 11.
+#
+# Inspired by widely used hardening guidance (CIS Benchmarks, Microsoft
+# security baselines). This is not a certified benchmark assessment.
+# Every check reads one registry value from the 64-bit view; nothing is
+# written. `default` is the behaviour Windows applies when the value is
+# not set.
+
+rules:
+  # ── Credential protection ─────────────────────────────────────────────
+  - id: WIN-LSA-001
+    title: LSA runs as a protected process
+    severity: high
+    platform: windows
+    rationale: LSA protection blocks credential dumping tools from reading LSASS memory.
+    remediation: Set DWORD RunAsPPL = 1 under HKLM\SYSTEM\CurrentControlSet\Control\Lsa and reboot.
+    check:
+      type: registry
+      hive: hklm
+      key: 'SYSTEM\CurrentControlSet\Control\Lsa'
+      value: RunAsPPL
+      expect: { one_of: [1, 2] }
+
+  - id: WIN-LSA-002
+    title: LAN Manager password hashes are not stored
+    severity: high
+    platform: windows
+    rationale: LM hashes are trivially crackable.
+    remediation: Set DWORD NoLMHash = 1 under HKLM\SYSTEM\CurrentControlSet\Control\Lsa.
+    check:
+      type: registry
+      hive: hklm
+      key: 'SYSTEM\CurrentControlSet\Control\Lsa'
+      value: NoLMHash
+      expect: { equals: 1 }
+
+  - id: WIN-LSA-003
+    title: Only NTLMv2 is used and LM/NTLMv1 are refused
+    severity: medium
+    platform: windows
+    rationale: LM and NTLMv1 responses can be cracked or relayed with little effort.
+    remediation: Set DWORD LmCompatibilityLevel = 5 under HKLM\SYSTEM\CurrentControlSet\Control\Lsa.
+    check:
+      type: registry
+      hive: hklm
+      key: 'SYSTEM\CurrentControlSet\Control\Lsa'
+      value: LmCompatibilityLevel
+      default: 3
+      expect: { at_least: 5 }
+
+  - id: WIN-LSA-004
+    title: WDigest does not keep plaintext credentials in memory
+    severity: high
+    platform: windows
+    rationale: With WDigest caching enabled, logon passwords sit in LSASS memory in recoverable form.
+    remediation: Set DWORD UseLogonCredential = 0 under HKLM\SYSTEM\CurrentControlSet\Control\SecurityProviders\WDigest.
+    check:
+      type: registry
+      hive: hklm
+      key: 'SYSTEM\CurrentControlSet\Control\SecurityProviders\WDigest'
+      value: UseLogonCredential
+      default: 0
+      expect: { equals: 0 }
+
+  - id: WIN-LSA-005
+    title: Anonymous enumeration of SAM accounts is blocked
+    severity: medium
+    platform: windows
+    rationale: Anonymous account enumeration gives attackers a list of usernames to target.
+    remediation: Set DWORD RestrictAnonymousSAM = 1 under HKLM\SYSTEM\CurrentControlSet\Control\Lsa.
+    check:
+      type: registry
+      hive: hklm
+      key: 'SYSTEM\CurrentControlSet\Control\Lsa'
+      value: RestrictAnonymousSAM
+      expect: { equals: 1 }
+
+  # ── User Account Control ──────────────────────────────────────────────
+  - id: WIN-UAC-001
+    title: User Account Control is enabled
+    severity: critical
+    platform: windows
+    rationale: Without UAC every administrator process runs with full privileges.
+    remediation: Set DWORD EnableLUA = 1 under HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System and reboot.
+    check:
+      type: registry
+      hive: hklm
+      key: 'SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System'
+      value: EnableLUA
+      expect: { equals: 1 }
+
+  - id: WIN-UAC-002
+    title: UAC prompts administrators on the secure desktop
+    severity: medium
+    platform: windows
+    rationale: Prompting on the secure desktop for every elevation closes auto-elevation bypasses that the Windows default leaves open.
+    remediation: Set DWORD ConsentPromptBehaviorAdmin = 2 (or 1) under HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System.
+    check:
+      type: registry
+      hive: hklm
+      key: 'SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System'
+      value: ConsentPromptBehaviorAdmin
+      default: 5
+      expect: { one_of: [1, 2] }
+
+  - id: WIN-UAC-003
+    title: UAC elevation prompts use the secure desktop
+    severity: medium
+    platform: windows
+    rationale: The secure desktop stops other programs from spoofing or clicking the prompt.
+    remediation: Set DWORD PromptOnSecureDesktop = 1 under HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System.
+    check:
+      type: registry
+      hive: hklm
+      key: 'SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System'
+      value: PromptOnSecureDesktop
+      default: 1
+      expect: { equals: 1 }
+
+  # ── SMB ───────────────────────────────────────────────────────────────
+  - id: WIN-SMB-001
+    title: The SMBv1 client driver is disabled
+    severity: high
+    platform: windows
+    rationale: SMBv1 is the protocol behind EternalBlue-class worms and has no place on a current system.
+    remediation: Run `Disable-WindowsOptionalFeature -Online -FeatureName SMB1Protocol` from an elevated PowerShell and reboot.
+    check:
+      type: registry
+      hive: hklm
+      key: 'SYSTEM\CurrentControlSet\Services\mrxsmb10'
+      value: Start
+      default: 4
+      expect: { equals: 4 }
+
+  - id: WIN-SMB-002
+    title: The SMB server requires signing
+    severity: medium
+    platform: windows
+    rationale: Unsigned SMB sessions can be relayed or tampered with on the network.
+    remediation: Run `Set-SmbServerConfiguration -RequireSecuritySignature $true` from an elevated PowerShell.
+    check:
+      type: registry
+      hive: hklm
+      key: 'SYSTEM\CurrentControlSet\Services\LanmanServer\Parameters'
+      value: RequireSecuritySignature
+      default: 0
+      expect: { equals: 1 }
+
+  - id: WIN-SMB-003
+    title: The SMB client requires signing
+    severity: medium
+    platform: windows
+    rationale: Unsigned SMB sessions can be relayed or tampered with on the network.
+    remediation: Run `Set-SmbClientConfiguration -RequireSecuritySignature $true` from an elevated PowerShell.
+    check:
+      type: registry
+      hive: hklm
+      key: 'SYSTEM\CurrentControlSet\Services\LanmanWorkstation\Parameters'
+      value: RequireSecuritySignature
+      default: 0
+      expect: { equals: 1 }
+
+  # ── Remote Desktop ────────────────────────────────────────────────────
+  - id: WIN-RDP-001
+    title: Remote Desktop is disabled
+    severity: medium
+    platform: windows
+    rationale: RDP is one of the most attacked remote services. Ignore this check on machines that are administered over RDP on purpose.
+    remediation: Turn off Settings > System > Remote Desktop, or set DWORD fDenyTSConnections = 1 under HKLM\SYSTEM\CurrentControlSet\Control\Terminal Server.
+    check:
+      type: registry
+      hive: hklm
+      key: 'SYSTEM\CurrentControlSet\Control\Terminal Server'
+      value: fDenyTSConnections
+      expect: { equals: 1 }
+
+  - id: WIN-RDP-002
+    title: Remote Desktop requires Network Level Authentication
+    severity: high
+    platform: windows
+    rationale: NLA authenticates the user before a full session is created, which removes most pre-authentication attack surface.
+    remediation: Set DWORD UserAuthentication = 1 under HKLM\SYSTEM\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp.
+    check:
+      type: registry
+      hive: hklm
+      key: 'SYSTEM\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp'
+      value: UserAuthentication
+      expect: { equals: 1 }
+
+  # ── Windows Firewall ──────────────────────────────────────────────────
+  - id: WIN-FW-001
+    title: Windows Firewall is on for the domain profile
+    severity: high
+    platform: windows
+    rationale: The host firewall limits exposure of local services on every network.
+    remediation: Run `Set-NetFirewallProfile -Profile Domain -Enabled True` from an elevated PowerShell.
+    check:
+      type: registry
+      hive: hklm
+      key: 'SYSTEM\CurrentControlSet\Services\SharedAccess\Parameters\FirewallPolicy\DomainProfile'
+      value: EnableFirewall
+      expect: { equals: 1 }
+
+  - id: WIN-FW-002
+    title: Windows Firewall is on for the private profile
+    severity: high
+    platform: windows
+    rationale: The host firewall limits exposure of local services on every network.
+    remediation: Run `Set-NetFirewallProfile -Profile Private -Enabled True` from an elevated PowerShell.
+    check:
+      type: registry
+      hive: hklm
+      key: 'SYSTEM\CurrentControlSet\Services\SharedAccess\Parameters\FirewallPolicy\StandardProfile'
+      value: EnableFirewall
+      expect: { equals: 1 }
+
+  - id: WIN-FW-003
+    title: Windows Firewall is on for the public profile
+    severity: critical
+    platform: windows
+    rationale: Public networks are untrusted by definition; the firewall is the only barrier in front of local services.
+    remediation: Run `Set-NetFirewallProfile -Profile Public -Enabled True` from an elevated PowerShell.
+    check:
+      type: registry
+      hive: hklm
+      key: 'SYSTEM\CurrentControlSet\Services\SharedAccess\Parameters\FirewallPolicy\PublicProfile'
+      value: EnableFirewall
+      expect: { equals: 1 }
+
+  # ── Microsoft Defender ────────────────────────────────────────────────
+  - id: WIN-DEF-001
+    title: Defender real-time protection is not turned off
+    severity: critical
+    platform: windows
+    rationale: Malware routinely disables real-time protection before doing anything else.
+    remediation: Run `Set-MpPreference -DisableRealtimeMonitoring $false` from an elevated PowerShell.
+    check:
+      type: registry
+      hive: hklm
+      key: 'SOFTWARE\Microsoft\Windows Defender\Real-Time Protection'
+      value: DisableRealtimeMonitoring
+      default: 0
+      expect: { equals: 0 }
+
+  - id: WIN-DEF-002
+    title: Defender is not disabled by policy
+    severity: critical
+    platform: windows
+    rationale: A DisableAntiSpyware policy value is a common persistence trick to keep Defender off.
+    remediation: Delete DisableAntiSpyware under HKLM\SOFTWARE\Policies\Microsoft\Windows Defender unless another antivirus product manages this machine.
+    check:
+      type: registry
+      hive: hklm
+      key: 'SOFTWARE\Policies\Microsoft\Windows Defender'
+      value: DisableAntiSpyware
+      default: 0
+      expect: { equals: 0 }
+
+  # ── Logging, name resolution, boot, media ─────────────────────────────
+  - id: WIN-PS-001
+    title: PowerShell script block logging is enabled
+    severity: medium
+    platform: windows
+    rationale: Script block logs record what PowerShell actually ran, including de-obfuscated code, which is essential for incident response.
+    remediation: Set DWORD EnableScriptBlockLogging = 1 under HKLM\SOFTWARE\Policies\Microsoft\Windows\PowerShell\ScriptBlockLogging.
+    check:
+      type: registry
+      hive: hklm
+      key: 'SOFTWARE\Policies\Microsoft\Windows\PowerShell\ScriptBlockLogging'
+      value: EnableScriptBlockLogging
+      default: 0
+      expect: { equals: 1 }
+
+  - id: WIN-NET-001
+    title: LLMNR name resolution is disabled
+    severity: medium
+    platform: windows
+    rationale: LLMNR answers can be spoofed on the local network to capture or relay credentials.
+    remediation: Set DWORD EnableMulticast = 0 under HKLM\SOFTWARE\Policies\Microsoft\Windows NT\DNSClient.
+    check:
+      type: registry
+      hive: hklm
+      key: 'SOFTWARE\Policies\Microsoft\Windows NT\DNSClient'
+      value: EnableMulticast
+      default: 1
+      expect: { equals: 0 }
+
+  - id: WIN-BOOT-001
+    title: UEFI Secure Boot is enabled
+    severity: high
+    platform: windows
+    rationale: Secure Boot stops unsigned bootloaders and bootkits from loading before Windows.
+    remediation: Enable Secure Boot in the UEFI firmware settings.
+    check:
+      type: registry
+      hive: hklm
+      key: 'SYSTEM\CurrentControlSet\Control\SecureBoot\State'
+      value: UEFISecureBootEnabled
+      expect: { equals: 1 }
+
+  - id: WIN-AUTO-001
+    title: AutoRun is disabled for all drive types
+    severity: medium
+    platform: windows
+    rationale: AutoRun lets removable media start programs without the user choosing to run them.
+    remediation: Set DWORD NoDriveTypeAutoRun = 255 under HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\Explorer.
+    check:
+      type: registry
+      hive: hklm
+      key: 'SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\Explorer'
+      value: NoDriveTypeAutoRun
+      default: 145
+      expect: { equals: 255 }
